@@ -5,6 +5,7 @@ build/
 
 # extracted APK working files (large decompiled bytecode — findings live in research/*.md)
 research/apk-extract/
+research/*_strings.txt
 *.dex
 *.apk
 

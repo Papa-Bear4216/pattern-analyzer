@@ -5,7 +5,7 @@ on the DEX files (no `aapt`/`apktool`/`jadx` available), so this is class-name a
 string-literal level analysis, not decompiled source. Treat as strong hints, not
 confirmed behavior.
 
-The `Second Guess` APK was **too large to upload** — no findings on it yet.
+The `Second Guess` APK was pulled directly from the connected device via ADB (`com.anonymous.registryapp`, app label `SecondGuess`, ~31.5 MB). Analyzed via Hermes bytecode string table extraction and DEX inspection.
 
 ---
 
@@ -113,29 +113,61 @@ missing:
 - In-context suggestion surfacing (`BubbleOverlayService`) ✔
 - Privacy denylist for sensitive apps ✔
 
-### What is NOT present in either APK
+---
 
-No class resembling any of:
+## Second Guess — `com.anonymous.registryapp`
 
-- Tiers / a tiered state machine
-- An archive or decay clock
-- A "keep" tier or reusability meter
-- A bounded competitive promotion pool
-- A monthly review / human-checkpoint gate
+Medium-sized React Native / Expo application (~31.5 MB, compiled with Hermes Bytecode engine). App display name is **`SecondGuess`** (slug `registry-app`, Expo SDK 52/57 architecture with `SYSTEM_ALERT_WINDOW` permission).
 
-The ranking exists (`GapEvaluator` + `CachedTaskRanking`), but there's no evidence
-of the **bounded promotion/demotion lifecycle with decay clocks** that this repo's
-spec describes. That absence is consistent with the user's statement that this
-mechanism is the new/missing piece.
+This is the **human-facing triage, management, and intervention client** for the Registry stack. It talks directly to the same backend Firebase project: `registry-app-prod-7a07c`.
+
+### Architecture & Data Flow
+
+Second Guess serves as the interactive dashboard and review interface where patterns/items detected by Usage Collector and Coach are staged, matched, snoozed, reviewed, and persisted into the permanent Registry.
+
+#### 1. Core Firestore Collections & Hooks
+| Collection / Hook | Role |
+|---|---|
+| `observations` (`useObservations`) | Ingested live observation events / signals logged from devices (`handleLogObservation`, `logObservation`). |
+| `staging_items` (`useStagingItems`) | Candidates pending user confirmation or automated promotion. Staged items undergo triage before graduating to the registry. |
+| `registry_items` (`useRegistryItems`) | The active Registry of recognized, confirmed items and behavioral/tool subscriptions. |
+
+#### 2. Screen & Navigation Structure
+- **`RegistryListScreen`**: Primary list view of all active registered items, showing cost, status, billing/usage cycle (`billingCycle`, `annual`, `monthly`), and dormancy indicators.
+- **`StagingScreen`**: The triage workbench for incoming items. Surfaces unconfirmed or newly observed candidates.
+  - Matches candidate observations against existing registry items (`suggestedMatch`).
+  - Allows the user to confirm or link an item (`resolveStagingItemId`).
+  - Supports snoozing candidates (`snoozedUntil`).
+  - Flags dormant items (`isDormantRow`).
+- **`ItemDetailScreen`**: Detailed view of a specific registry item (`registryItemId`), containing its observation history, linked observations (`useObservations`), edit controls, and usage metrics.
+- **`AddItemScreen`**: Form to manually register a new item into the registry.
+- **`Settings` / `Alerts`**: Manages alert dismissals (`alertDismissals`) and preferences.
+
+### Key Takeaway
+
+Second Guess is the **presentation and resolution layer**:
+- **Usage Collector** logs raw usage stats in the background to Cloud Functions.
+- **Coach** monitors screen context, accessibility, and dwell times with local Gemini Nano evaluation, pushing ranked tasks / gaps into Firestore.
+- **Second Guess** is the mobile client where the user interacts with `staging_items`, reviews `suggestedMatch` suggestions, snoozes or resolves staged items into `registry_items`, and audits dormant subscriptions/patterns.
 
 ---
 
-## Open items
+### What is NOT present in any of the three APKs
 
-1. **Second Guess** — need a description or the source. Unknown what triggers it,
-   what it shows, what actions it offers.
-2. **Where Pattern Analyzer plugs in** — replace/upgrade `GapEvaluator` +
-   `CachedTaskRanking` inside Coach, or sit as a new stage between Coach's output
-   and Second Guess?
-3. **Repo location** — the Coach/Collector/Second Guess Android source repo has
-   not been located. This repo (`pattern-analyzer`) is a placeholder until it is.
+No class or bundle code resembling:
+- A tiered state machine with bounded promotion slots (LFU-with-decay cache replacement).
+- Automatic decay clocks with periodic halving / EMA score attenuation.
+- A protected "Keep" tier with a dedicated reusability meter.
+- A monthly human checkpoint that cleanly bundles demoted items for a single kick-or-keep review before pruning.
+
+The pieces are in place (`staging_items` in Second Guess, `CachedTaskRanking` and `GapEvaluator` in Coach), but the **lifecycle engine that manages the transitions between them automatically** is what is missing.
+
+---
+
+## Updated Open Items & Integration Surface
+
+1. **Where Pattern Analyzer slots in**:
+   - Inputs from: `observations` (Collector/Coach) and `GapEvaluator` / `CachedTaskRanking` (Coach).
+   - Manages: Tier 0 counters → Promotion pool → Graduation to Keep tier → Decay clocks.
+   - Outputs to: `staging_items` and `BubbleOverlayService` (Coach) / `StagingScreen` (Second Guess) when promotion thresholds trip, and feeds the monthly review list in Second Guess.
+2. **Repo location**: Source code for Second Guess (React Native/Expo) and Coach/Collector (Kotlin Android) are not yet in this git repository, but we now have full DEX/HBC string extracts and architecture mapped.
