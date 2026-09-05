@@ -1,0 +1,16 @@
+# build / deps
+node_modules/
+dist/
+build/
+
+# extracted APK working files (large decompiled bytecode — findings live in research/*.md)
+research/apk-extract/
+*.dex
+*.apk
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

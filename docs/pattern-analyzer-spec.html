@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pattern Analyzer Spec</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F5F6F2;
+    --surface: #FFFFFF;
+    --ink: #1C2420;
+    --ink-soft: #3A423C;
+    --muted: #66706A;
+    --line: #D7DAD3;
+    --line-strong: #B9BEB6;
+    --accent: #3A5A6B;
+    --accent-soft: #E4EBEC;
+    --keep: #3F7D5C;
+    --keep-bg: #E6F1EA;
+    --review: #A5761E;
+    --review-bg: #F5EAD3;
+    --cut: #A23E3E;
+    --cut-bg: #F5E3E1;
+    --tbd: #8A5FB5;
+    --tbd-bg: #ECE4F4;
+    --font-display: 'IBM Plex Serif', Georgia, 'Times New Roman', serif;
+    --font-body: 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #171B16;
+      --surface: #1D211C;
+      --ink: #E9EBE6;
+      --ink-soft: #C6CBC2;
+      --muted: #8B948C;
+      --line: #333930;
+      --line-strong: #454C40;
+      --accent: #8FB4C4;
+      --accent-soft: #223038;
+      --keep: #7FBF9C;
+      --keep-bg: #1E3327;
+      --review: #D9AE5C;
+      --review-bg: #372C16;
+      --cut: #E28C8C;
+      --cut-bg: #3A2323;
+      --tbd: #C6A8E8;
+      --tbd-bg: #2E2540;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #171B16;
+    --surface: #1D211C;
+    --ink: #E9EBE6;
+    --ink-soft: #C6CBC2;
+    --muted: #8B948C;
+    --line: #333930;
+    --line-strong: #454C40;
+    --accent: #8FB4C4;
+    --accent-soft: #223038;
+    --keep: #7FBF9C;
+    --keep-bg: #1E3327;
+    --review: #D9AE5C;
+    --review-bg: #372C16;
+    --cut: #E28C8C;
+    --cut-bg: #3A2323;
+    --tbd: #C6A8E8;
+    --tbd-bg: #2E2540;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+
+  .shell {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 56px 32px 120px;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 700px);
+    gap: 64px;
+    align-items: start;
+  }
+
+  header.doc-head {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+
+  .doc-head .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .doc-head h1 {
+    font-family: var(--font-display);
+    font-size: 34px;
+    font-weight: 600;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .doc-head .dek {
+    color: var(--muted);
+    font-size: 15px;
+    max-width: 62ch;
+  }
+
+  .doc-meta {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
+  .doc-meta span b { color: var(--ink-soft); font-weight: 500; }
+
+  .callout {
+    grid-column: 1 / -1;
+    background: var(--tbd-bg);
+    border: 1px solid var(--tbd);
+    border-radius: 4px;
+    padding: 16px 18px;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+
+  .callout b { color: var(--tbd); }
+
+  nav.toc {
+    position: sticky;
+    top: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13px;
+  }
+
+  nav.toc .toc-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  nav.toc a {
+    color: var(--ink-soft);
+    text-decoration: none;
+    padding: 7px 0 7px 12px;
+    border-left: 2px solid var(--line);
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  nav.toc a:hover, nav.toc a:focus-visible {
+    color: var(--accent);
+    border-left-color: var(--accent);
+  }
+
+  nav.toc a .n {
+    font-family: var(--font-mono);
+    color: var(--muted);
+    margin-right: 8px;
+  }
+
+  main { min-width: 0; }
+
+  section.doc-section {
+    padding: 44px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  section.doc-section:last-child { border-bottom: none; }
+
+  .section-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+
+  section.doc-section h2 {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 600;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+
+  section.doc-section h3 {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 600;
+    margin: 28px 0 10px;
+  }
+
+  section.doc-section p {
+    margin: 0 0 14px;
+    color: var(--ink-soft);
+    max-width: 66ch;
+  }
+
+  section.doc-section ul, section.doc-section ol {
+    margin: 0 0 14px;
+    padding-left: 22px;
+    color: var(--ink-soft);
+  }
+
+  section.doc-section li { margin-bottom: 6px; }
+
+  .placeholder {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px dashed var(--line-strong);
+    border-radius: 3px;
+    padding: 14px 16px;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .tag.keep { color: var(--keep); background: var(--keep-bg); }
+  .tag.review { color: var(--review); background: var(--review-bg); }
+  .tag.cut { color: var(--cut); background: var(--cut-bg); }
+  .tag.tbd { color: var(--tbd); background: var(--tbd-bg); }
+
+  footer.doc-foot {
+    grid-column: 1 / -1;
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  @media (max-width: 780px) {
+    .shell { grid-template-columns: 1fr; }
+    nav.toc { position: static; flex-direction: row; flex-wrap: wrap; gap: 8px; }
+    nav.toc a { border-left: none; border-bottom: 2px solid var(--line); padding: 4px 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <header class="doc-head">
+    <div class="eyebrow">Technical Spec &middot; Draft</div>
+    <h1>Pattern Analyzer</h1>
+    <p class="dek">Tiered, bounded-memory lifecycle engine for behavioral patterns &mdash; the missing layer between pattern detection and the automation/shortcut suggestions the Registry stack surfaces.</p>
+    <div class="doc-meta">
+      <span>Status: <b>Draft &mdash; being re-framed</b></span>
+      <span>Owner: <b>Michael Hebert</b></span>
+      <span>Updated: <b>2026-09-05</b></span>
+    </div>
+  </header>
+
+  <div class="callout">
+    <b>Re-framing in progress.</b> The prose below still describes the mechanism in
+    <i>subscription/tool-audit</i> terms (Core Registry / cost-per-use / cancellation).
+    That was a wrong turn while drafting. The real target is the general
+    <i>usage-pattern &rarr; automation/shortcut suggestion</i> engine. The state machine
+    itself &mdash; tiers, decay clocks, bounded pool, one human checkpoint &mdash; carries
+    over unchanged; only the domain nouns need swapping. See
+    <code>research/registry-stack-findings.md</code>.
+  </div>
+
+  <nav class="toc">
+    <div class="toc-label">Contents</div>
+    <a href="#overview"><span class="n">01</span>Overview</a>
+    <a href="#core-registry"><span class="n">02</span>Inputs</a>
+    <a href="#state-machine"><span class="n">03</span>State Machine</a>
+    <a href="#policy-auditing"><span class="n">04</span>Policy Auditing</a>
+    <a href="#second-guess"><span class="n">05</span>Second Guess</a>
+    <a href="#open-questions"><span class="n">06</span>Open Questions</a>
+  </nav>
+
+  <main>
+    <section class="doc-section" id="overview">
+      <div class="section-eyebrow">01 &mdash; Overview</div>
+      <h2>Overview</h2>
+      <p>The system has three parts, each with a distinct responsibility:</p>
+      <ul>
+        <li><strong>Core Registry</strong> &mdash; the source of truth. Discovers and stores every tracked entity, along with the raw telemetry (logins, API calls, device interactions) that everything downstream evaluates against.</li>
+        <li><strong>Registry Coach</strong> &mdash; the evaluation engine. Runs telemetry through a tiered state machine to determine whether a given entity is alive, dormant, or worth its cost.</li>
+        <li><strong>Second Guess</strong> &mdash; the intervention layer. Intercepts renewal cycles for anything the Coach flags and, for the one action with real-world consequences, forces a deliberate human decision before it happens.</li>
+      </ul>
+      <p>The governing constraint across all three: <strong>every stage is fully automated, with exactly one mandatory human touchpoint.</strong> Discovery, telemetry collection, dormancy detection, cost-per-use scoring, and every tier transition run without manual input. The sole required exception is the monthly Second Guess review that precedes any irreversible action &mdash; nothing is cut without an explicit human decision. Everything else in this document exists to make that one moment well-informed and infrequent.</p>
+    </section>
+
+    <section class="doc-section" id="core-registry">
+      <div class="section-eyebrow">02 &mdash; Inputs</div>
+      <h2>Inputs</h2>
+      <p>The source of truth everything else reads from. Covered lightly here &mdash; the state machine in Section 03 is the focus of this document.</p>
+      <h3>Schema</h3>
+      <ul>
+        <li>Entity name</li>
+        <li>Billing interval</li>
+        <li>Cost per cycle</li>
+        <li>Renewal date</li>
+        <li>Authentication method</li>
+        <li>Category tag (e.g. Infrastructure, Productivity, Development)</li>
+      </ul>
+      <h3>Ingestion &amp; telemetry</h3>
+      <p>Fully automated end to end &mdash; discovery and telemetry (login events, API call frequency, device interactions) both run with no manual input required. Mechanics are out of scope for this document; what matters downstream is that every registered item arrives with a running utilization baseline attached.</p>
+    </section>
+
+    <section class="doc-section" id="state-machine">
+      <div class="section-eyebrow">03 &mdash; State Machine</div>
+      <h2>State Machine</h2>
+      <p>Every registered item is continuously subject to a two-stage filter. <strong>Stage 1 (dormancy gate)</strong> is a binary alive/dead check on activity, independent of price. Only items that pass Stage 1 reach <strong>Stage 2 (cost-per-use)</strong>, which divides spend by verified interactions to catch tools that are technically alive but not worth what they cost. The two stages never run in the other order &mdash; cost is irrelevant to something already dead.</p>
+
+      <figure>
+        <svg viewBox="0 0 900 580" role="img" aria-label="State diagram: items cycle between Observed, Keep, and Review/Archive based on the dormancy and cost-per-use gates, with dormant or flagged items routed through a mandatory monthly Second Guess human checkpoint before reaching Cut." style="width:100%; height:auto; max-width:820px; display:block; margin:0 auto;">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+            </marker>
+          </defs>
+
+          <g fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.75">
+            <polyline points="125,240 125,72 650,72" marker-end="url(#arrow)"></polyline>
+            <polyline points="210,272 260,272 260,332 650,332" marker-end="url(#arrow)"></polyline>
+            <polyline points="125,304 125,410 400,410" marker-end="url(#arrow)"></polyline>
+            <polyline points="735,104 735,300" marker-end="url(#arrow)"></polyline>
+            <polyline points="735,364 735,460 510,460" marker-end="url(#arrow)"></polyline>
+            <polyline points="290,460 210,478" marker-end="url(#arrow)"></polyline>
+            <polyline points="400,510 400,548 160,548 160,304" stroke-dasharray="5 4" marker-end="url(#arrow)"></polyline>
+            <path d="M700,40 C690,10 780,10 770,40" marker-end="url(#arrow)"></path>
+          </g>
+
+          <g font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.85">
+            <text x="388" y="60" text-anchor="middle">gate: alive &amp; justified</text>
+            <text x="455" y="322" text-anchor="middle">gate: alive, overpriced</text>
+            <text x="262" y="402" text-anchor="middle">gate: dormant</text>
+            <text x="735" y="27" text-anchor="middle">usage &rarr; resets 14d clock</text>
+            <text x="748" y="205" text-anchor="start">14d unused</text>
+            <text x="622" y="452" text-anchor="middle">flagged &middot; monthly report</text>
+            <text x="205" y="465" text-anchor="start">confirmed</text>
+            <text x="280" y="540" text-anchor="middle">override &middot; kept anyway</text>
+          </g>
+
+          <g>
+            <rect x="40" y="240" width="170" height="64" rx="3" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.4"></rect>
+            <text x="125" y="266" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="13" font-weight="500" fill="currentColor">OBSERVED</text>
+            <text x="125" y="284" text-anchor="middle" font-family="'IBM Plex Sans', sans-serif" font-size="10.5" fill="var(--muted)">Tier 0 &middot; continuous telemetry</text>
+          </g>
+
+          <g>
+            <rect x="650" y="40" width="170" height="64" rx="3" fill="var(--keep-bg)" stroke="var(--keep)" stroke-width="1.4"></rect>
+            <text x="735" y="66" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="13" font-weight="500" fill="var(--keep)">KEEP</text>
+            <text x="735" y="84" text-anchor="middle" font-family="'IBM Plex Sans', sans-serif" font-size="10.5" fill="var(--muted)">protected &middot; reusability meter</text>
+          </g>
+
+          <g>
+            <rect x="650" y="300" width="170" height="64" rx="3" fill="var(--review-bg)" stroke="var(--review)" stroke-width="1.4"></rect>
+            <text x="735" y="326" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="13" font-weight="500" fill="var(--review)">REVIEW / ARCHIVE</text>
+            <text x="735" y="344" text-anchor="middle" font-family="'IBM Plex Sans', sans-serif" font-size="10.5" fill="var(--muted)">dormant or overpriced</text>
+          </g>
+
+          <g>
+            <polygon points="400,410 510,460 400,510 290,460" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.4"></polygon>
+            <text x="400" y="456" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" font-weight="500" fill="var(--accent)">SECOND GUESS</text>
+            <text x="400" y="472" text-anchor="middle" font-family="'IBM Plex Sans', sans-serif" font-size="9.5" fill="var(--muted)">monthly &middot; human required</text>
+          </g>
+
+          <g>
+            <rect x="40" y="446" width="170" height="64" rx="3" fill="var(--cut-bg)" stroke="var(--cut)" stroke-width="1.4"></rect>
+            <text x="125" y="472" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="13" font-weight="500" fill="var(--cut)">CUT</text>
+            <text x="125" y="490" text-anchor="middle" font-family="'IBM Plex Sans', sans-serif" font-size="10.5" fill="var(--muted)">offboarding triggered</text>
+          </g>
+        </svg>
+        <figcaption style="text-align:center; color: var(--muted); font-size: 13px; margin-top: 10px;">Every item cycles between Observed, Keep, and Review/Archive on the two-stage gate; only the Second Guess checkpoint can route an item to Cut.</figcaption>
+      </figure>
+
+      <h3>Tiers</h3>
+      <ul>
+        <li><span class="tag">Observed</span> &mdash; Tier 0. Cheap always-on aggregate counters for every registered item: running counts and bounded ring buffers, never raw event logs at rest. Memory cost is flat regardless of history length. Every item here is continuously re-checked against the two-stage gate.</li>
+        <li><span class="tag keep">Keep</span> &mdash; earned by passing both gate stages. Carries a reusability meter and is protected from any competitive eviction. Any usage event resets a 14-day dormancy clock.</li>
+        <li><span class="tag review">Review / Archive</span> &mdash; entered one of two ways: a <strong>Keep</strong> item goes 14 days without use ("dormant-but-not-dead-yet"), or a Stage 2 evaluation finds a live item overpriced for its actual use ("alive-but-overpriced"). Same bucket, distinct causes &mdash; worth different UI copy later (see Section 06).</li>
+        <li><span class="tag cut">Cut</span> &mdash; reached only through Second Guess. Triggers Offboarding Automation (Section 05).</li>
+      </ul>
+
+      <h3>Decay &amp; reset</h3>
+      <ul>
+        <li>Any usage event on a <span class="tag keep">Keep</span> item resets its 14-day clock in full &mdash; not a partial credit, a full reset. A single use within 14 days resets it; each subsequent use resets it again.</li>
+        <li>14 days unused in <span class="tag keep">Keep</span> &rarr; demotes to <span class="tag review">Review / Archive</span>.</li>
+        <li>14 more days unused in <span class="tag review">Review / Archive</span> &rarr; collapses all the way back to <span class="tag">Observed</span>. Nothing is deleted; the item simply loses all earned status and must re-earn <span class="tag keep">Keep</span> from scratch through the gate again.</li>
+        <li>Demoted items never re-enter a competitive promotion pool &mdash; they just carry the plain meter until they either re-earn Keep or get caught by Second Guess.</li>
+      </ul>
+
+      <h3>The one human checkpoint</h3>
+      <p>A monthly report surfaces everything that dropped into <span class="tag review">Review / Archive</span> (or failed the dormancy gate outright) since the last report. The user explicitly kicks or keeps each one &mdash; overriding the automatic clock in either direction. Items the user may simply have forgotten about surface here for a deliberate keep/kick decision. This is the single mandatory manual step in the entire system (Section 01); nothing reaches <span class="tag cut">Cut</span> without it. Full mechanics in Section 05.</p>
+    </section>
+
+    <section class="doc-section" id="policy-auditing">
+      <div class="section-eyebrow">04 &mdash; Policy Auditing</div>
+      <h2>Registry Coach &mdash; Policy Auditing</h2>
+      <div class="placeholder">[To be written &mdash; light section: tier mismatches, redundant/overlapping capabilities, upcoming auto-renewals needing proactive intervention.]</div>
+    </section>
+
+    <section class="doc-section" id="second-guess">
+      <div class="section-eyebrow">05 &mdash; Second Guess</div>
+      <h2>Second Guess &mdash; Intervention &amp; Offboarding</h2>
+      <div class="placeholder">[To be written &mdash; blocked on a description of what the existing Second Guess app actually does. Light section: monthly checkpoint mechanics, triage-to-action mapping, offboarding automation (cancellation steps, config backup export, downstream dependency check).]</div>
+    </section>
+
+    <section class="doc-section" id="open-questions">
+      <div class="section-eyebrow">06 &mdash; Open Questions</div>
+      <h2>Open Questions / TBD</h2>
+      <ul>
+        <li><strong>Domain re-framing</strong> &mdash; whole doc still reads as subscription auditing; needs re-basing on usage-pattern &rarr; automation suggestion. Blocking.</li>
+        <li><strong>Where it plugs in</strong> &mdash; inside Registry Coach's evaluator (upgrading <code>GapEvaluator</code> / <code>CachedTaskRanking</code>), or as new logic between Coach output and Second Guess.</li>
+        <li><strong>Dormancy threshold values</strong> &mdash; 30 vs 60 days for the initial flag; not settled, only an example range.</li>
+        <li><strong>Review's two sub-flavors</strong> &mdash; whether "dormant" vs "overpriced" get distinct UI treatment. Discussed as worth doing later, not decided.</li>
+        <li><strong>Cost-per-use formula</strong> &mdash; beyond spend &divide; verified interactions; how a "verified interaction" is defined per integration type. Not discussed.</li>
+        <li><strong>Offboarding dependency-check mechanics</strong> &mdash; not discussed beyond "flag downstream service dependencies before purge".</li>
+        <li><strong>Second Guess confirmation UX</strong> &mdash; explicitly deferred; not designed.</li>
+        <li><strong>What the meter measures post-graduation</strong> &mdash; the underlying pattern (does the user still do the thing) vs. engagement with the suggestion/shortcut itself. Leaning toward shortcut-engagement.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="doc-foot">Pattern Analyzer &mdash; internal technical spec &mdash; co-authored draft</footer>
+</div>
+
+</body>
+</html>
