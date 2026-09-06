@@ -1,171 +1,197 @@
 # Pattern Analyzer — Technical Spec
 
-**Status:** Draft — being re-framed
-**Owner:** Michael Hebert
-**Updated:** 2026-09-05
-**Styled version:** `pattern-analyzer-spec.html` · [published Artifact](https://claude.ai/code/artifact/58024ff8-d530-4832-814f-a69c15ef4356)
-
----
-
-> ⚠️ **Re-framing in progress.** The prose below still describes the mechanism in
-> *subscription/tool-audit* terms (Core Registry / cost-per-use / cancellation).
-> That was a wrong turn while drafting. The real target is the general
-> *usage-pattern → automation/shortcut suggestion* engine. The state machine
-> itself — tiers, decay clocks, bounded pool, one human checkpoint — carries over
-> unchanged; only the domain nouns need swapping. See
-> `research/registry-stack-findings.md`.
+**Status:** Active Specification — Subscription Layer Dropped  
+**Owner:** Michael Hebert  
+**Updated:** 2026-09-05  
 
 ---
 
 ## 01 — Overview
 
-The system has three parts, each with a distinct responsibility:
+The system is a resource-efficient, proactive behavioral-pattern discovery, automation suggestion, and shortcut lifecycle engine. Its purpose is to observe user activity across devices, detect repetitive tasks and workflow friction, synthesize concrete automations or shortcuts, and govern those automations through an adaptive, self-pruning lifecycle.
 
-- **Core Registry** — the source of truth. Discovers and stores every tracked
-  entity, along with the raw telemetry (logins, API calls, device interactions)
-  that everything downstream evaluates against.
-- **Registry Coach** — the evaluation engine. Runs telemetry through a tiered
-  state machine to determine whether a given entity is alive, dormant, or worth
-  its cost.
-- **Second Guess** — the intervention layer. Intercepts renewal cycles for
-  anything the Coach flags and, for the one action with real-world consequences,
-  forces a deliberate human decision before it happens.
+The architecture comprises three coordinated layers:
 
-The governing constraint across all three: **every stage is fully automated, with
-exactly one mandatory human touchpoint.** Discovery, telemetry collection,
-dormancy detection, cost-per-use scoring, and every tier transition run without
-manual input. The sole required exception is the monthly Second Guess review that
-precedes any irreversible action — nothing is cut without an explicit human
-decision. Everything else in this document exists to make that one moment
-well-informed and infrequent.
+1. **Perception Layer (Sensory & Telemetry)**
+   - **Native Usage Collector** (`com.registry.collector`): Runs lightweight background `WorkManager` workers polling Android's `UsageStatsManager` for app dwell times, frequencies, and temporal usage distributions.
+   - **Contextual Coach** (`com.registry.coach`): Monitors foreground window switches via an `AccessibilityService`. When a high-friction dwell or repetitive transition is detected, it runs an on-device **Gemini Nano** evaluator to identify task gaps while preserving strict privacy.
+   - **Desktop Activity Heartbeat** (`tool-registry-heartbeat`): Observes desktop activity and long-term memory (Pieces LTM) to identify cross-platform workflow patterns.
 
-## 02 — Inputs
+2. **Pattern Analyzer Lifecycle Engine (Core Evaluation)**
+   - Maintains O(1) memory aggregate counters at Tier 0 (`Observed`).
+   - Promotes qualifying recurring sequences into a size-constrained candidate pool governed by Least Frequently Used with Exponential Decay (LFU-with-decay).
+   - Evaluates patterns through a two-stage filter: **Stage 1 (Recency Gate)** and **Stage 2 (Utility & Adoption Ratio)**.
+   - Graduated automations enter the **Keep Tier**, where they earn a reusability meter and are protected by a **14-day reset clock**.
+   - Automations that fall into disuse automatically decay through **Review** and **Archive**, preventing cognitive and device clutter.
 
-The source of truth everything else reads from. Covered lightly here — the state
-machine in Section 03 is the focus of this document.
+3. **Intervention & Execution Layer (Second Guess & OS Targets)**
+   - **In-Context Prompting** (`BubbleOverlayService`): Floating, anti-tapjacked UI overlay in Contextual Coach that presents in-moment shortcuts when a known gap or pattern is active.
+   - **Staging Workbench** (`Second Guess / StagingScreen`): Asynchronous human triage interface where discovered workflow patterns and suggested automations are reviewed and approved.
+   - **Monthly Review Checkpoint** (`Second Guess / MonthlyReviewScreen`): The single mandatory human gate. Prunes or re-authorizes demoted automations before final offboarding.
+   - **Automation Runners**: OS-level targets including Android Intents, Termux scripts, deep links, and desktop task automation.
 
-### Schema
+### Governing Constraint
+**Every stage is fully automated, with exactly one mandatory human touchpoint.** Telemetry ingestion, pattern clustering, candidate scoring, decay clocks, and tier transitions execute autonomously. The sole required human touchpoint is the monthly review checkpoint prior to permanent offboarding (`Cut`). Nothing built and trusted is discarded without explicit human confirmation.
 
-- Entity name
-- Billing interval
-- Cost per cycle
-- Renewal date
-- Authentication method
-- Category tag (e.g. Infrastructure, Productivity, Development)
+---
 
-### Ingestion & telemetry
+## 02 — Telemetry & Tier 0 Perception
 
-Fully automated end to end — discovery and telemetry (login events, API call
-frequency, device interactions) both run with no manual input required. Mechanics
-are out of scope for this document; what matters downstream is that every
-registered item arrives with a running utilization baseline attached.
+Telemetry collection runs continuously without manual intervention. To ensure zero storage bloat and flat memory overhead, the system strictly forbids storing unbounded raw event logs at rest.
 
-## 03 — State Machine
+### Telemetry Signals
+- `foreground_app`: Package name and window identifier.
+- `dwell_time_ms`: Verified active interaction duration.
+- `transition_sequence`: Ordered tuple of app switches within a temporal window (e.g., `[AppA, AppB, AppA]` within 3 minutes).
+- `task_gap_flag`: Synthesized by on-device Gemini Nano when screen state reveals repeated manual formatting, copy-paste churn, or multi-step routine actions.
+- `shortcut_execution`: Verified execution event of an existing automation.
 
-Every registered item is continuously subject to a two-stage filter. **Stage 1
-(dormancy gate)** is a binary alive/dead check on activity, independent of price.
-Only items that pass Stage 1 reach **Stage 2 (cost-per-use)**, which divides spend
-by verified interactions to catch tools that are technically alive but not worth
-what they cost. The two stages never run in the other order — cost is irrelevant
-to something already dead.
+### Tier 0 Bounded Aggregates
+Every tracked app or pattern signature is tracked at Tier 0 using bounded O(1) structures:
+- **Running Aggregates**: Total interaction count, cumulative dwell time, and moving average launch frequency.
+- **Fixed-Size Ring Buffer**: The last 16 event timestamps and durations per signature. Once filled, new observations overwrite the oldest slot.
+- **Memory Invariant**: Flat memory overhead $O(1)$ per entity regardless of whether the system has been running for two days or two years.
 
-### Lifecycle
+---
+
+## 03 — State Machine & Lifecycle
 
 ```
-                         gate: alive & justified
-   ┌──────────┐  ───────────────────────────────────────►  ┌──────────────────┐
-   │ OBSERVED │                                             │      KEEP        │◄─┐ usage resets
-   │  Tier 0  │  ──── gate: alive, overpriced ───┐          │ reusability meter│  │ 14d clock
-   │ counters │                                  │          └────────┬─────────┘  │
-   └────┬─────┘  ── gate: dormant ──┐            │                   │ 14d unused
-        │                           │            ▼                   ▼
-        │                           │   ┌────────────────────────────────────┐
-        │  ◄── override, kept ──────┼───│      REVIEW / ARCHIVE              │
-        │        (dashed)           │   │   dormant  or  overpriced          │
-        │                           │   └───────────────┬────────────────────┘
-        │                           │                   │ flagged, monthly report
-        │                           ▼                   ▼
-        │                     ┌───────────────────────────────┐
-        │                     │        SECOND GUESS           │
-        │                     │   monthly · human required    │
-        │                     └───────────────┬───────────────┘
-        │                                     │ confirmed
-        │                                     ▼
-        │                             ┌───────────────┐
-        └─────────────────────────────│      CUT      │
-                                      │  offboarding  │
-                                      └───────────────┘
+                         Gate: High Utility & Adoption
+   ┌──────────┐  ──────────────────────────────────────────►  ┌──────────────────┐
+   │ OBSERVED │                                                │      KEEP        │◄─┐ Execution
+   │  Tier 0  │  ─── Promoted to Bounded Pool ──┐              │ reusability meter│  │ resets
+   │ counters │                                 │              └────────┬─────────┘  │ 14d clock
+   └────┬─────┘                                 ▼                       │ 14d unused
+        │                              ┌─────────────────┐              ▼
+        │                              │    CANDIDATE    │     ┌─────────────────┐
+        │                              │  LFU-with-decay │     │     REVIEW      │
+        │                              └────────┬────────┘     │ 14d dormant or  │
+        │                                       │ rejected     │ high friction   │
+        │                                       ▼              └────────┬────────┘
+        │                              ┌─────────────────┐              │ 14d unused
+        │                              │  COLLAPSE / PRUNE│              ▼
+        │  ◄── Restore on Execution ───┴─────────────────┴─────│     ARCHIVE     │
+        │                                                      │ 28d dormant     │
+        │                                                      └────────┬────────┘
+        │                                                               │ Monthly Batch
+        │                                                               ▼
+        │                                                      ┌─────────────────┐
+        │                                                      │  SECOND GUESS   │
+        │                                                      │ monthly review  │
+        │                                                      └────────┬────────┘
+        │                                                               │ confirmed Cut
+        │                                                               ▼
+        │                                                      ┌─────────────────┐
+        └──────────────────────────────────────────────────────│       CUT       │
+                                                               │  offboard / rm  │
+                                                               └─────────────────┘
 ```
 
-Every item cycles between Observed, Keep, and Review/Archive on the two-stage
-gate; only the Second Guess checkpoint can route an item to Cut.
+### Lifecycle Tiers
 
-### Tiers
+1. **Observed (Tier 0)**: Unpromoted baseline counters. Monitored for recurring frequency and dwell thresholds.
+2. **Candidate (Promotion Pool)**: Bounded competitive pool (capacity: $N=50$ candidates). Competes on an Exponential Moving Average (EMA) frequency score. Once a candidate proves stability, a concrete shortcut/automation is synthesized and dispatched to Second Guess.
+3. **Keep**: Graduated, user-approved automation.
+   - Earns a running **reusability meter** (incremented on every verified execution).
+   - Protected from competitive pool eviction.
+   - Guarded by a **14-day decay clock**.
+4. **Review**: Demoted state entered when:
+   - An active **Keep** automation receives 0 executions for 14 consecutive days ("dormant automation"), OR
+   - The Stage 2 gate flags high prompt frequency with low user adoption ("annoying/low-value automation").
+5. **Archive**: An automation in **Review** that remains unused for an additional 14 days (28 days total). It is deactivated from active overlays but retained for the monthly human checkpoint.
+6. **Cut**: Reached exclusively via the monthly Second Guess checkpoint. Removes the automation script/intent and archives telemetry history.
 
-- **Observed** — Tier 0. Cheap always-on aggregate counters for every registered
-  item: running counts and bounded ring buffers, never raw event logs at rest.
-  Memory cost is flat regardless of history length. Every item here is
-  continuously re-checked against the two-stage gate.
-- **Keep** — earned by passing both gate stages. Carries a reusability meter and
-  is protected from any competitive eviction. Any usage event resets a 14-day
-  dormancy clock.
-- **Review / Archive** — entered one of two ways: a **Keep** item goes 14 days
-  without use ("dormant-but-not-dead-yet"), or a Stage 2 evaluation finds a live
-  item overpriced for its actual use ("alive-but-overpriced"). Same bucket,
-  distinct causes — worth different UI copy later (see Section 06).
-- **Cut** — reached only through Second Guess. Triggers Offboarding Automation
-  (Section 05).
+### The Two-Stage Evaluation Gate
 
-### Decay & reset
+Automations and candidates are continuously evaluated through a sequential two-stage gate:
 
-- Any usage event on a **Keep** item resets its 14-day clock in full — not a
-  partial credit, a full reset. A single use within 14 days resets it; each
-  subsequent use resets it again.
-- 14 days unused in **Keep** → demotes to **Review / Archive**.
-- 14 more days unused in **Review / Archive** → collapses all the way back to
-  **Observed**. Nothing is deleted; the item simply loses all earned status and
-  must re-earn **Keep** from scratch through the gate again.
-- Demoted items never re-enter a competitive promotion pool — they just carry the
-  plain meter until they either re-earn Keep or get caught by Second Guess.
+#### Stage 1: Recency & Activity Gate (Binary)
+A binary check determining whether the pattern or automation has had verified user activity within the required time window.
+- For **Keep** automations: Has it been executed within the last 14 days?
+- For **Observed** patterns: Has the signature repeated at least 3 times in the last 7 days?
 
-### The one human checkpoint
+If an item fails Stage 1, it immediately routes toward demotion (`Review` / `Archive`). Stage 2 is skipped because value is meaningless for an inactive entity.
 
-A monthly report surfaces everything that dropped into **Review / Archive** (or
-failed the dormancy gate outright) since the last report. The user explicitly
-kicks or keeps each one — overriding the automatic clock in either direction.
-Items the user may simply have forgotten about surface here for a deliberate
-keep/kick decision. This is the single mandatory manual step in the entire system
-(Section 01); nothing reaches **Cut** without it. Full mechanics in Section 05.
+#### Stage 2: Utility & Adoption Ratio
+For entities passing Stage 1, Stage 2 evaluates whether the automation produces net positive utility or merely introduces prompt friction.
 
-## 04 — Registry Coach: Policy Auditing
+$$\text{Utility Score} = \left( \frac{\text{Executions Accepted}}{\text{Prompts Displayed}} \times \text{Estimated Seconds Saved} \right) - \text{Dismissal Penalty}$$
 
-*[To be written — light section: tier mismatches, redundant/overlapping
-capabilities across platforms, upcoming auto-renewals needing proactive
-intervention.]*
+- **High Adoption ($\ge 60\%$)**: Maintained in **Keep**; reusability meter accelerates.
+- **Low Adoption ($< 20\%$) with High Prompts**: Flagged as noisy/low-value; demoted to **Review** with `reviewReason = 'high_friction'`.
 
-## 05 — Second Guess: Intervention & Offboarding
+### Decay Clocks & Execution Reset
+- **Full Binary Reset**: Any single execution of a **Keep** automation resets its 14-day clock in full to `now + 14 days`. Resets are binary: a single verified use grants the complete 14-day window.
+- **Demotion**: 
+  - 14 days without execution $\rightarrow$ demote to **Review**.
+  - 14 additional days without execution $\rightarrow$ demote to **Archive**.
+- **Execution from Review**: If the user runs an automation while it sits in **Review**, it immediately restores to **Keep** and resets its 14-day clock.
+- **Archive Collapse**: If an item in **Archive** is not preserved during the monthly human checkpoint, it collapses to plain **Observed** Tier 0 counters or is permanently **Cut**.
 
-*[To be written — blocked on a description of what the existing Second Guess app
-actually does. Light section: monthly checkpoint mechanics, triage-to-action
-mapping, offboarding automation (cancellation steps, config backup export,
-downstream dependency check).]*
+### Bounded Promotion Pool & EMA Decay
+- The Candidate tier is bounded to 50 active candidate slots.
+- To prevent older patterns from permanently ossifying the pool and blocking newly formed user habits, candidate scores decay exponentially:
+  $$S(t) = S_0 \times 2^{-\frac{\Delta t}{\lambda}}$$
+  where $\lambda = 30\text{ days}$ (half-life), and $\Delta t$ is days elapsed since last observation.
+- Eviction runs on a nightly batch schedule. When the pool is full, the lowest-scoring decaying candidate is evicted.
 
-## 06 — Open Questions / TBD
+---
 
-- **Domain re-framing** — whole doc still reads as subscription auditing; needs
-  re-basing on usage-pattern → automation suggestion. Blocking.
-- **Where it plugs in** — inside Registry Coach's evaluator (upgrading
-  `GapEvaluator` / `CachedTaskRanking`), or as new logic between Coach output and
-  Second Guess.
-- **Dormancy threshold values** — 30 vs 60 days for the initial flag; not
-  settled, only an example range.
-- **Review's two sub-flavors** — whether "dormant" vs "overpriced" get distinct
-  UI treatment. Discussed as worth doing later, not decided.
-- **Cost-per-use formula** — beyond spend ÷ verified interactions; how a
-  "verified interaction" is defined per integration type. Not discussed.
-- **Offboarding dependency-check mechanics** — not discussed beyond "flag
-  downstream service dependencies before purge".
-- **Second Guess confirmation UX** — explicitly deferred; not designed.
-- **What the meter measures post-graduation** — the underlying pattern (does the
-  user still do the thing) vs. engagement with the suggestion/shortcut itself.
-  Leaning toward shortcut-engagement.
+## 04 — Perception & On-Device Gap Evaluation
+
+### 1. Contextual Coach Integration
+Contextual Coach (`contextual-coach`) operates as a privacy-first sensory engine:
+- **Accessibility Monitoring (`AccessibilityMonitor`)**: Subscribes to `TYPE_WINDOW_STATE_CHANGED`.
+- **Pre-Filtering Gates**:
+  1. Skips all launcher, dialer, and system apps.
+  2. Enforces the `DenylistFilter` using bundled `sensitive_apps.json` (excluding banking, medical, password management apps).
+  3. Evaluates dwell times using `DwellTimer` (disregarding fast app transitions $<10\text{s}$).
+- **On-Device Gemini Nano (`GeminiNanoGapEvaluator`)**:
+  - Leverages Google AICore on-device AI.
+  - Inspects active accessibility node trees ephemerally to identify workflow friction (e.g., repetitive manual entry).
+  - Emits `GapResult.RealGap` containing non-sensitive workflow descriptions.
+  - Zero screen text or PII is ever written to disk or sent to the cloud (strictly verified by custom Android Lint rule `NoLoggingInPrivacyZoneDetector`).
+
+### 2. Native Usage Collector
+- Operates via Android `UsageStatsManager`.
+- Aggregates daily app foreground duration and launch tallies.
+- Emits structured, idempotent telemetry batches via `/ingest`.
+
+---
+
+## 05 — Second Guess: Interaction & Offboarding
+
+Second Guess (`com.anonymous.registryapp`) serves as the presentation, triage, and human checkpoint layer.
+
+### 1. In-Context Suggestions (`BubbleOverlayService`)
+When Contextual Coach detects that a known pattern or graduated automation is applicable to the current screen:
+- A floating chat-head overlay pill appears.
+- Displays a concise suggestion (e.g., *"Run 'Export to Sheet' shortcut"*).
+- Tapping the bubble triggers the OS automation intent and logs an execution event, resetting the 14-day clock.
+
+### 2. Staging Screen (`StagingScreen`)
+- Surfaces newly discovered workflow patterns and synthesized shortcut candidates.
+- Allows the user to inspect the trigger conditions, view the estimated time saved, test the shortcut, and either **Approve** (promoting to `Keep`) or **Reject** (discarding the candidate).
+
+### 3. The Single Human Checkpoint (`MonthlyReviewScreen`)
+A monthly review is generated on the 1st of every month:
+- Aggregates all automations that dropped into `Review` or `Archive` during the preceding cycle.
+- Presents a simple, decisive UI:
+  - **Keep**: Restores the automation to the `Keep` tier and resets its 14-day clock (useful for seasonal or monthly workflows).
+  - **Cut**: Confirms removal of the automation, unregistering shortcuts and pruning the active state.
+- **Invariant**: No graduated automation is ever discarded automatically. The human checkpoint is mandatory before any automation is **Cut**.
+
+---
+
+## 06 — System Constants & Parameters
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| `KEEP_DECAY_CLOCK_DAYS` | 14 days | Balances habit retention with timely identification of abandoned workflows. |
+| `REVIEW_TO_ARCHIVE_DAYS` | 14 days | Provides a 2-week buffer in Review before deep archiving. |
+| `CANDIDATE_POOL_CAPACITY` | 50 patterns | Strict O(1) space bound on competing candidate patterns. |
+| `SCORE_DECAY_HALF_LIFE_DAYS`| 30 days | Halves unreinforced pattern scores monthly to allow new habits to surface. |
+| `TIER0_RING_BUFFER_SIZE` | 16 events | Provides statistical frequency baselines with fixed memory footprint. |
+| `STAGE2_ADOPTION_THRESHOLD` | 0.60 (60%) | Automations accepted $\ge 60\%$ of prompts stay in Keep. |
+| `STAGE2_FRICTION_THRESHOLD` | 0.20 (20%) | Automations dismissed $>80\%$ of prompts are demoted as noisy. |

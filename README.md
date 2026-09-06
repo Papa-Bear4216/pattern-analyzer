@@ -1,41 +1,52 @@
 # Pattern Analyzer
 
-Working repo for the **Pattern Analyzer** — a resource-efficient, tiered behavioral-pattern
-lifecycle engine intended to slot into the existing Registry app stack
-(Registry Usage Collector → Registry Coach → Second Guess).
+A resource-efficient, proactive behavioral-pattern discovery, automation suggestion, and shortcut lifecycle engine.
+
+Pattern Analyzer continuously processes user interaction telemetry across devices, detects repetitive workflows and task gaps, synthesizes concrete automations (scripts, shortcuts, intents), and governs them through an adaptive, self-pruning lifecycle.
+
+---
+
+## The Vision
+
+> *"Something that could point out multiple patterns the user uses and use that to suggest a 'better way'. Sets up an automation or something. Creates a script that runs with a shortcut. But by watching usage stats and auditing and graphing the data to compile suggestions."*
+
+Most automation tools require the user to manually anticipate, write, and maintain scripts. Pattern Analyzer reverses the burden: it observes real user habits, identifies workflow friction, suggests concrete automations, and automatically retires automations that are abandoned so that devices remain clutter-free.
+
+---
+
+## Architecture Overview
+
+Pattern Analyzer operates across three coordinated layers:
+
+1. **Perception Layer (Continuous Telemetry & On-Device AI)**
+   - **Native Usage Collector** (`com.registry.collector`): Background `WorkManager` workers polling Android's `UsageStatsManager` for app dwell times and launch frequencies.
+   - **Contextual Coach** (`com.registry.coach`): Watches foreground window switches via an `AccessibilityService`. When task gaps or repetitive dwell transitions are detected, on-device **Gemini Nano** evaluates workflow friction under strict zero-logging privacy rules.
+   - **Desktop Heartbeat** (`tool-registry-heartbeat`): Cross-references desktop activity and Pieces LTM to discover multi-step workflows.
+
+2. **Pattern Analyzer Core Engine (Bounded & Decaying State Machine)**
+   - **Tier 0 (Observed)**: $O(1)$ flat-memory aggregate counters and fixed ring buffers. Zero persistent event log bloat.
+   - **Candidate Pool**: Bounded competitive pool ($N=50$) governed by Least Frequently Used with Exponential Moving Average (LFU + EMA) decay. Older habits decay over a 30-day half-life so new habits can surface.
+   - **Graduation Gate**: Evaluates recency (Stage 1) and Utility & Adoption Ratio (Stage 2: $\frac{\text{Accepted}}{\text{Prompted}} \times \text{Time Saved}$).
+   - **Keep Tier**: Active automations earn a reusability meter and a **14-day reset countdown clock**. Any verified execution fully resets the 14-day clock.
+   - **Review & Archive**: Unused automations demote to `Review` (14d) $\rightarrow$ `Archive` (28d).
+
+3. **Intervention & Execution Layer (Second Guess & Overlay)**
+   - **Contextual Coach Overlay** (`BubbleOverlayService`): In-context floating pill that suggests shortcuts right when a relevant workflow begins.
+   - **Second Guess Client** (`com.anonymous.registryapp`): React Native / Expo triage client. Review unconfirmed workflow candidates on `StagingScreen`.
+   - **The Single Human Checkpoint** (`MonthlyReviewScreen`): Exactly one mandatory manual gate per month. Surfaces demoted automations for a decisive **Keep** or **Cut** before offboarding.
+
+---
+
+## Repository Structure
+
+- **`docs/`**: Technical specification (`docs/pattern-analyzer-spec.md`).
+- **`research/`**: Reverse-engineering and architecture mapping of connected client apps and backend functions.
+- **`src/`**: Core TypeScript lifecycle engine (types, decay math, bounded pool, state machine, and test suite).
+
+---
 
 ## Status
 
-Early design. Nothing built here yet — this repo currently holds:
-
-- **`docs/`** — the technical spec (in progress). See `docs/pattern-analyzer-spec.md`
-  and the styled HTML version `docs/pattern-analyzer-spec.html`
-  (published Artifact: <https://claude.ai/code/artifact/58024ff8-d530-4832-814f-a69c15ef4356>).
-- **`research/`** — reverse-engineering notes on the two APKs shared so far
-  (`Registry Usage Collector`, `Registry Coach`). The `Second Guess` APK was too
-  large to inspect; findings on it are pending a description or source access.
-
-> ⚠️ The spec in `docs/` still carries an early **subscription/tool-audit framing**
-> that was a wrong turn during drafting. The real target is the general
-> **usage-pattern → automation/shortcut suggestion** engine described in
-> `research/registry-stack-findings.md`. The spec needs re-framing before it's built on.
-
-## The original idea
-
-> "New innovative app idea. Something nobody has done and would drastically improve
-> my life as a whole. Improves my efficiency. Lowers the manual hands-on work.
-> Something that could point out multiple patterns the user uses and use that to
-> suggest a 'better way'. Sets up an automation or something. Creates a script that
-> runs with a shortcut. But by watching usage stats and auditing and graphing the
-> data to compile suggestions."
-
-## The missing piece
-
-Registry Coach already detects patterns (`GapEvaluator`, on-device Gemini Nano) and
-ranks them (`CachedTaskRanking`). What it does **not** have — and what this repo is
-for — is a bounded-memory promotion/decay lifecycle: cheap always-on counters,
-promotion into a size-limited competitive pool, graduation into a protected tier
-with a reusability meter, decay clocks, and a single monthly human checkpoint
-before anything a suggestion produced gets removed.
-
-See `docs/` for the full mechanism.
+- **Specification**: Complete and aligned on pure pattern & automation lifecycle (all subscription/billing layers dropped).
+- **Core Engine**: TypeScript implementation in progress (`src/`).
+- **Client & Backend Ecosystem**: Implemented and deployed in [`projects/registry-app`](file:///C:/Users/micha/projects/registry-app).

@@ -168,6 +168,9 @@ The pieces are in place (`staging_items` in Second Guess, `CachedTaskRanking` an
 
 1. **Where Pattern Analyzer slots in**:
    - Inputs from: `observations` (Collector/Coach) and `GapEvaluator` / `CachedTaskRanking` (Coach).
-   - Manages: Tier 0 counters → Promotion pool → Graduation to Keep tier → Decay clocks.
-   - Outputs to: `staging_items` and `BubbleOverlayService` (Coach) / `StagingScreen` (Second Guess) when promotion thresholds trip, and feeds the monthly review list in Second Guess.
-2. **Repo location**: Source code for Second Guess (React Native/Expo) and Coach/Collector (Kotlin Android) are not yet in this git repository, but we now have full DEX/HBC string extracts and architecture mapped.
+   - Manages: Tier 0 counters → Bounded candidate pool (LFU + EMA decay) → Two-stage graduation gate → Keep tier (14-day clocks + reusability meters) → Decay to Review/Archive → Monthly checkpoint.
+   - Outputs to: `stagingItems` and `BubbleOverlayService` (Coach) / `StagingScreen` (Second Guess) when promotion thresholds trip, and feeds `MonthlyReviewScreen` in Second Guess.
+2. **Repo location & Source Discovery**:
+   - The full source code for the entire stack was located at `C:\Users\micha\projects\registry-app` (including React Native `src/`, `contextual-coach/` with on-device Gemini Nano, `native-usage-collector/` with WorkManager, and `functions/` with Firebase backend).
+   - **Architecture Pivot**: All subscription auditing artifacts (`cost`, `billingCycle`, `deadMoneyAlert`) are officially dropped in favor of the pure behavioral pattern discovery, shortcut suggestion, and automation lifecycle engine specified in `docs/pattern-analyzer-spec.md`.
+
