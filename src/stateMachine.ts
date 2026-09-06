@@ -38,13 +38,11 @@ export function handleObservation(
     }
 
     case 'prompt_accepted': {
-      updated.timesPrompted = (pattern.timesPrompted || 0) + 1;
       updated.timesAccepted = (pattern.timesAccepted || 0) + 1;
       break;
     }
 
     case 'prompt_dismissed': {
-      updated.timesPrompted = (pattern.timesPrompted || 0) + 1;
       updated.timesDismissed = (pattern.timesDismissed || 0) + 1;
       break;
     }

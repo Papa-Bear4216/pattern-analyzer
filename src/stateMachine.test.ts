@@ -71,6 +71,49 @@ describe('State Machine & Full Lifecycle Transitions', () => {
       expect(restored.reviewReason).toBeNull();
       expect(restored.keepClockExpiresAt).not.toBeNull();
     });
+
+    it('does not double-count prompt denominator on acceptance or dismissal', () => {
+      const now = new Date('2026-01-20T00:00:00Z');
+      const startPattern: WorkflowPattern = {
+        ...basePattern,
+        timesPrompted: 0,
+        timesAccepted: 0,
+        timesDismissed: 0,
+      };
+
+      // 1. Prompt is displayed
+      const displayed = handleObservation(
+        startPattern,
+        { id: 'obs-d', patternId: 'p-1', source: 'coach', actionType: 'prompt_displayed', durationMs: 0, observedAt: now.toISOString(), createdBy: 'u-1' },
+        now
+      );
+      expect(displayed.timesPrompted).toBe(1);
+      expect(displayed.timesAccepted).toBe(0);
+
+      // 2. Prompt is accepted
+      const accepted = handleObservation(
+        displayed,
+        { id: 'obs-a', patternId: 'p-1', source: 'coach', actionType: 'prompt_accepted', durationMs: 0, observedAt: now.toISOString(), createdBy: 'u-1' },
+        now
+      );
+      expect(accepted.timesPrompted).toBe(1); // Still 1, NOT double-counted to 2
+      expect(accepted.timesAccepted).toBe(1);
+
+      // 3. Next prompt displayed and dismissed
+      const secondDisplay = handleObservation(
+        accepted,
+        { id: 'obs-d2', patternId: 'p-1', source: 'coach', actionType: 'prompt_displayed', durationMs: 0, observedAt: now.toISOString(), createdBy: 'u-1' },
+        now
+      );
+      const dismissed = handleObservation(
+        secondDisplay,
+        { id: 'obs-dis', patternId: 'p-1', source: 'coach', actionType: 'prompt_dismissed', durationMs: 0, observedAt: now.toISOString(), createdBy: 'u-1' },
+        now
+      );
+      expect(dismissed.timesPrompted).toBe(2); // Exactly 2 impressions
+      expect(dismissed.timesAccepted).toBe(1);
+      expect(dismissed.timesDismissed).toBe(1);
+    });
   });
 
   describe('handleNightlySweep', () => {
