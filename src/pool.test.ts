@@ -89,4 +89,22 @@ describe('Candidate Promotion Pool (LFU-with-decay)', () => {
     expect(ranked[0].id).toBe('p2'); // p2 ranks higher because p1 decayed
     expect(ranked[1].id).toBe('p1');
   });
+
+  it('exports bounded candidate pool with capacity enforcement and metadata', () => {
+    const pool = new CandidatePool(2);
+    const now = new Date('2026-01-01T00:00:00Z');
+    const p1 = makePattern('p1', 10, '2026-01-01T00:00:00Z');
+    const p2 = makePattern('p2', 20, '2026-01-01T00:00:00Z');
+    const p3 = makePattern('p3', 30, '2026-01-01T00:00:00Z');
+    // Non-candidate item should be filtered out
+    const pNonCandidate = { ...makePattern('p4', 40, '2026-01-01T00:00:00Z'), tier: LifecycleTier.Keep };
+
+    const exported = pool.exportPool([p1, p2, p3, pNonCandidate], now);
+    expect(exported.capacity).toBe(2);
+    expect(exported.totalCandidates).toBe(2);
+    expect(exported.candidates).toHaveLength(2);
+    expect(exported.candidates[0].id).toBe('p3'); // highest score
+    expect(exported.candidates[1].id).toBe('p2');
+    expect(exported.exportedAt).toBe(now.toISOString());
+  });
 });

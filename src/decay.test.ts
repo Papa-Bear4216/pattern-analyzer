@@ -26,8 +26,28 @@ describe('Decay Engine', () => {
     expect(decayed).toBeCloseTo(40, 1);
   });
 
-  it('boosts decayed score upon new observation', () => {
-    const boosted = boostScoreOnObservation(10, 2.5);
-    expect(boosted).toBe(12.5);
+  it('boosts decayed score upon new observation with logarithmic dampening', () => {
+    // Score starts at 0, first observation gets full weight (log1p(0) = 0 => boost = weight)
+    const initialBoost = boostScoreOnObservation(0, 2.5);
+    expect(initialBoost).toBe(2.5);
+
+    // Rapid successive hit when score is already 10: boost should be logarithmically dampened
+    const successiveBoost = boostScoreOnObservation(10, 2.5);
+    expect(successiveBoost).toBeLessThan(12.5);
+    expect(successiveBoost).toBeCloseTo(10 + 2.5 / (1 + Math.log(11)), 4);
+  });
+
+  it('demonstrates diminishing returns on rapid successive observations', () => {
+    let score = 0;
+    const deltas: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const nextScore = boostScoreOnObservation(score, 1.0);
+      deltas.push(nextScore - score);
+      score = nextScore;
+    }
+    // Each successive boost delta must be strictly smaller than the previous one
+    for (let i = 1; i < deltas.length; i++) {
+      expect(deltas[i]).toBeLessThan(deltas[i - 1]);
+    }
   });
 });

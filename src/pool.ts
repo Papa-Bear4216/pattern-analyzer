@@ -110,4 +110,41 @@ export class CandidatePool {
       }))
       .sort((a, b) => b.promotionScore - a.promotionScore);
   }
+
+  /**
+   * Exports the bounded candidate pool, applying recency decay, sorting descending,
+   * and slicing strictly to the pool capacity.
+   */
+  public exportPool(pool: WorkflowPattern[], now: Date = new Date()): CandidatePoolExport {
+    const candidates = this.rankCandidates(
+      pool.filter((p) => p.tier === LifecycleTier.Candidate),
+      now
+    ).slice(0, this.capacity);
+
+    return {
+      capacity: this.capacity,
+      totalCandidates: candidates.length,
+      exportedAt: now.toISOString(),
+      candidates,
+    };
+  }
+}
+
+export interface CandidatePoolExport {
+  capacity: number;
+  totalCandidates: number;
+  exportedAt: string;
+  candidates: WorkflowPattern[];
+}
+
+/**
+ * Convenience helper to export and rank a bounded candidate pool up to capacity.
+ */
+export function exportCandidatePool(
+  pool: WorkflowPattern[],
+  capacity: number = CONSTANTS.CANDIDATE_POOL_CAPACITY,
+  now: Date = new Date()
+): CandidatePoolExport {
+  const candidatePool = new CandidatePool(capacity);
+  return candidatePool.exportPool(pool, now);
 }

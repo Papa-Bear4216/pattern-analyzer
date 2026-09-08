@@ -34,10 +34,14 @@ export function applyDecay(
 /**
  * Increments an entity's promotion score upon observing a new event,
  * with logarithmic dampening for rapid successive hits.
+ * Marginal boost diminishes logarithmically as the score increases:
+ * Delta S = weight / (1 + ln(1 + safeScore))
  */
 export function boostScoreOnObservation(
   currentDecayedScore: number,
   weight: number = 1.0
 ): number {
-  return currentDecayedScore + weight;
+  const safeScore = Math.max(0, currentDecayedScore);
+  const dampenedBoost = weight / (1 + Math.log1p(safeScore));
+  return safeScore + dampenedBoost;
 }
