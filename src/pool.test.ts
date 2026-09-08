@@ -88,6 +88,32 @@ describe('Candidate Promotion Pool (LFU-with-decay)', () => {
     const ranked = pool.rankCandidates([p1, p2], now);
     expect(ranked[0].id).toBe('p2'); // p2 ranks higher because p1 decayed
     expect(ranked[1].id).toBe('p1');
+    expect(ranked[0].lastObservedAt).toBe(now.toISOString());
+    expect(ranked[1].lastObservedAt).toBe(now.toISOString());
+  });
+
+  it('updates lastObservedAt when decaying score to prevent compounding double-decay downstream', () => {
+    const pool = new CandidatePool(5);
+    const t0 = '2026-01-01T00:00:00Z';
+    const t1 = new Date('2026-01-31T00:00:00Z');
+    const p1 = makePattern('p1', 20, t0);
+
+    const firstRank = pool.rankCandidates([p1], t1);
+    const scoreAfterFirstRank = firstRank[0].promotionScore;
+    expect(firstRank[0].lastObservedAt).toBe(t1.toISOString());
+
+    // Second evaluation at the same timestamp t1 should NOT decay again
+    const secondRank = pool.rankCandidates(firstRank, t1);
+    expect(secondRank[0].promotionScore).toBeCloseTo(scoreAfterFirstRank, 5);
+    expect(secondRank[0].lastObservedAt).toBe(t1.toISOString());
+  });
+
+  it('defaults to current timestamp if now is omitted in rankCandidates', () => {
+    const pool = new CandidatePool(5);
+    const p1 = makePattern('p1', 20, '2026-01-01T00:00:00Z');
+    const ranked = pool.rankCandidates([p1]);
+    expect(ranked[0].lastObservedAt).toBeDefined();
+    expect(new Date(ranked[0].lastObservedAt).getTime()).not.toBeNaN();
   });
 
   it('exports bounded candidate pool with capacity enforcement and metadata', () => {
@@ -106,5 +132,20 @@ describe('Candidate Promotion Pool (LFU-with-decay)', () => {
     expect(exported.candidates[0].id).toBe('p3'); // highest score
     expect(exported.candidates[1].id).toBe('p2');
     expect(exported.exportedAt).toBe(now.toISOString());
+  });
+
+  it('deduplicates multiple candidates with the same ID, keeping the highest decayed score', () => {
+    const pool = new CandidatePool(5);
+    const now = new Date('2026-01-01T00:00:00Z');
+    const p1Low = makePattern('p1', 5, '2026-01-01T00:00:00Z');
+    const p1High = makePattern('p1', 25, '2026-01-01T00:00:00Z');
+    const p2 = makePattern('p2', 15, '2026-01-01T00:00:00Z');
+
+    const exported = pool.exportPool([p1Low, p1High, p2], now);
+    expect(exported.totalCandidates).toBe(2);
+    expect(exported.candidates).toHaveLength(2);
+    expect(exported.candidates[0].id).toBe('p1');
+    expect(exported.candidates[0].promotionScore).toBe(25);
+    expect(exported.candidates[1].id).toBe('p2');
   });
 });

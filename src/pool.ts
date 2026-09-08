@@ -103,10 +103,12 @@ export class CandidatePool {
    * Sorts candidates by decayed score descending.
    */
   public rankCandidates(pool: WorkflowPattern[], now: Date = new Date()): WorkflowPattern[] {
+    const currentIso = (now instanceof Date ? now : new Date()).toISOString();
     return [...pool]
       .map((item) => ({
         ...item,
         promotionScore: applyDecay(item.promotionScore, item.lastObservedAt, now),
+        lastObservedAt: currentIso,
       }))
       .sort((a, b) => b.promotionScore - a.promotionScore);
   }
@@ -116,15 +118,33 @@ export class CandidatePool {
    * and slicing strictly to the pool capacity.
    */
   public exportPool(pool: WorkflowPattern[], now: Date = new Date()): CandidatePoolExport {
-    const candidates = this.rankCandidates(
-      pool.filter((p) => p.tier === LifecycleTier.Candidate),
-      now
-    ).slice(0, this.capacity);
+    const validCapacity = Number.isFinite(this.capacity) ? Math.max(0, this.capacity) : CONSTANTS.CANDIDATE_POOL_CAPACITY;
+    const candidateOnly = pool.filter((p) => p && p.tier === LifecycleTier.Candidate);
+
+    // Deduplicate by pattern ID, keeping the instance with highest current decayed score
+    const deduplicatedMap = new Map<string, WorkflowPattern>();
+    for (const item of candidateOnly) {
+      if (!item.id) continue;
+      const existing = deduplicatedMap.get(item.id);
+      if (!existing) {
+        deduplicatedMap.set(item.id, item);
+      } else {
+        const existingScore = applyDecay(existing.promotionScore, existing.lastObservedAt, now);
+        const currentScore = applyDecay(item.promotionScore, item.lastObservedAt, now);
+        if (currentScore > existingScore) {
+          deduplicatedMap.set(item.id, item);
+        }
+      }
+    }
+
+    const uniqueCandidates = Array.from(deduplicatedMap.values());
+    const ranked = this.rankCandidates(uniqueCandidates, now);
+    const candidates = ranked.slice(0, validCapacity);
 
     return {
-      capacity: this.capacity,
+      capacity: validCapacity,
       totalCandidates: candidates.length,
-      exportedAt: now.toISOString(),
+      exportedAt: (now instanceof Date && !isNaN(now.getTime()) ? now : new Date()).toISOString(),
       candidates,
     };
   }

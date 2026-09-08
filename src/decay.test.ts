@@ -50,4 +50,21 @@ describe('Decay Engine', () => {
       expect(deltas[i]).toBeLessThan(deltas[i - 1]);
     }
   });
+
+  it('safely handles non-finite or negative inputs in boostScoreOnObservation', () => {
+    expect(boostScoreOnObservation(NaN, 1.0)).toBe(1.0);
+    expect(boostScoreOnObservation(-10, 2.0)).toBe(2.0);
+    expect(boostScoreOnObservation(5, -1.0)).toBe(5.0);
+    expect(boostScoreOnObservation(5, NaN)).toBe(5.0);
+  });
+
+  it('safely handles non-finite or negative inputs in calculateDecayedScore and applyDecay', () => {
+    expect(calculateDecayedScore(-5, 10, 30)).toBe(0);
+    expect(calculateDecayedScore(100, -5, 30)).toBe(100);
+    expect(calculateDecayedScore(100, 10, -5)).toBe(0);
+    expect(calculateDecayedScore(NaN, 10, 30)).toBe(0);
+
+    // Invalid date string
+    expect(applyDecay(50, 'not-a-date')).toBe(50);
+  });
 });

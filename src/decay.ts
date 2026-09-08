@@ -9,8 +9,11 @@ export function calculateDecayedScore(
   elapsedDays: number,
   halfLifeDays: number = CONSTANTS.SCORE_DECAY_HALF_LIFE_DAYS
 ): number {
-  if (initialScore <= 0 || elapsedDays <= 0) {
-    return Math.max(0, initialScore);
+  if (!Number.isFinite(initialScore) || initialScore <= 0 || !Number.isFinite(elapsedDays) || elapsedDays <= 0) {
+    return Number.isFinite(initialScore) ? Math.max(0, initialScore) : 0;
+  }
+  if (!Number.isFinite(halfLifeDays) || halfLifeDays <= 0) {
+    return 0;
   }
   const factor = Math.pow(2, -elapsedDays / halfLifeDays);
   return initialScore * factor;
@@ -26,6 +29,9 @@ export function applyDecay(
   halfLifeDays: number = CONSTANTS.SCORE_DECAY_HALF_LIFE_DAYS
 ): number {
   const lastDate = typeof lastObservedAt === 'string' ? new Date(lastObservedAt) : lastObservedAt;
+  if (!lastDate || isNaN(lastDate.getTime()) || (now && isNaN(now.getTime()))) {
+    return Number.isFinite(currentScore) ? Math.max(0, currentScore) : 0;
+  }
   const elapsedMs = Math.max(0, now.getTime() - lastDate.getTime());
   const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
   return calculateDecayedScore(currentScore, elapsedDays, halfLifeDays);
@@ -41,7 +47,8 @@ export function boostScoreOnObservation(
   currentDecayedScore: number,
   weight: number = 1.0
 ): number {
-  const safeScore = Math.max(0, currentDecayedScore);
-  const dampenedBoost = weight / (1 + Math.log1p(safeScore));
+  const safeScore = Number.isFinite(currentDecayedScore) ? Math.max(0, currentDecayedScore) : 0;
+  const safeWeight = Number.isFinite(weight) ? Math.max(0, weight) : 0;
+  const dampenedBoost = safeWeight / (1 + Math.log1p(safeScore));
   return safeScore + dampenedBoost;
 }
