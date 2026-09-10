@@ -139,11 +139,13 @@ export class CandidatePool {
 
     const uniqueCandidates = Array.from(deduplicatedMap.values());
     const ranked = this.rankCandidates(uniqueCandidates, now);
+    const totalCandidates = ranked.length;
     const candidates = ranked.slice(0, validCapacity);
 
     return {
       capacity: validCapacity,
-      totalCandidates: candidates.length,
+      totalCandidates,
+      returned: candidates.length,
       exportedAt: (now instanceof Date && !isNaN(now.getTime()) ? now : new Date()).toISOString(),
       candidates,
     };
@@ -153,6 +155,7 @@ export class CandidatePool {
 export interface CandidatePoolExport {
   capacity: number;
   totalCandidates: number;
+  returned: number;
   exportedAt: string;
   candidates: WorkflowPattern[];
 }

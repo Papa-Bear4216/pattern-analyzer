@@ -127,7 +127,8 @@ describe('Candidate Promotion Pool (LFU-with-decay)', () => {
 
     const exported = pool.exportPool([p1, p2, p3, pNonCandidate], now);
     expect(exported.capacity).toBe(2);
-    expect(exported.totalCandidates).toBe(2);
+    expect(exported.totalCandidates).toBe(3);
+    expect(exported.returned).toBe(2);
     expect(exported.candidates).toHaveLength(2);
     expect(exported.candidates[0].id).toBe('p3'); // highest score
     expect(exported.candidates[1].id).toBe('p2');
@@ -143,6 +144,7 @@ describe('Candidate Promotion Pool (LFU-with-decay)', () => {
 
     const exported = pool.exportPool([p1Low, p1High, p2], now);
     expect(exported.totalCandidates).toBe(2);
+    expect(exported.returned).toBe(2);
     expect(exported.candidates).toHaveLength(2);
     expect(exported.candidates[0].id).toBe('p1');
     expect(exported.candidates[0].promotionScore).toBe(25);
