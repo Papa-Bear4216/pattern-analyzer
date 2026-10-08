@@ -52,6 +52,59 @@ function toPattern(value: unknown, nowIso: string): WorkflowPattern | null {
   };
 }
 
+function clusterEventsToPatterns(events: unknown[], nowIso: string): WorkflowPattern[] {
+  const clusters = new Map<string, { count: number; lastObservedAt: string; name: string }>();
+  for (const item of events) {
+    const rec = asRecord(item);
+    if (!rec) continue;
+    const key = (typeof rec.package === 'string' && rec.package.trim())
+      || (typeof rec.app === 'string' && rec.app.trim())
+      || (typeof rec.screen === 'string' && rec.screen.trim())
+      || 'unknown';
+    const label = (typeof rec.app_label === 'string' && rec.app_label.trim())
+      || (typeof rec.title === 'string' && rec.title.trim())
+      || key;
+    const ts = typeof rec.timestamp === 'string' && !Number.isNaN(Date.parse(rec.timestamp))
+      ? new Date(rec.timestamp).toISOString()
+      : nowIso;
+    const existing = clusters.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (ts > existing.lastObservedAt) {
+        existing.lastObservedAt = ts;
+      }
+    } else {
+      clusters.set(key, { count: 1, lastObservedAt: ts, name: label });
+    }
+  }
+
+  const result: WorkflowPattern[] = [];
+  for (const [key, cluster] of clusters.entries()) {
+    result.push({
+      id: `cluster-${key}`,
+      name: cluster.name,
+      description: `Ambient telemetry cluster for ${key}`,
+      kind: PatternKind.ShortcutCandidate,
+      taskCategory: TaskCategory.Productivity,
+      tier: LifecycleTier.Candidate,
+      tierEnteredAt: nowIso,
+      keepClockExpiresAt: null,
+      reusabilityCount: 0,
+      promotionScore: cluster.count * 10,
+      lastObservedAt: cluster.lastObservedAt,
+      lastExecutedAt: null,
+      timesPrompted: 0,
+      timesAccepted: 0,
+      timesDismissed: 0,
+      triggerSignature: { sourceApps: [key] },
+      createdBy: 'mishmash-telemetry',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+  }
+  return result;
+}
+
 /**
  * Rank caller-supplied rows with the same decay and capacity rules the
  * Registry candidate export uses. Rows are treated as candidates; this does
@@ -60,15 +113,20 @@ function toPattern(value: unknown, nowIso: string): WorkflowPattern | null {
 export function rankSuppliedCandidates(payload: unknown, now: Date = new Date()): RankResult | { error: string } {
   const record = asRecord(payload);
   if (!record) return { error: 'rank requires a payload object' };
-  if (!Array.isArray(record.patterns)) return { error: 'rank requires payload.patterns' };
-  if (record.patterns.length > MAX_PATTERNS) return { error: 'rank accepts at most 50 patterns' };
 
   const nowIso = now.toISOString();
-  const patterns: WorkflowPattern[] = [];
-  for (const item of record.patterns) {
-    const built = toPattern(item, nowIso);
-    if (!built) return { error: 'each pattern needs a string id' };
-    patterns.push(built);
+  let patterns: WorkflowPattern[] = [];
+  if (Array.isArray(record.patterns)) {
+    if (record.patterns.length > MAX_PATTERNS) return { error: 'rank accepts at most 50 patterns' };
+    for (const item of record.patterns) {
+      const built = toPattern(item, nowIso);
+      if (!built) return { error: 'each pattern needs a string id' };
+      patterns.push(built);
+    }
+  } else if (Array.isArray(record.events)) {
+    patterns = clusterEventsToPatterns(record.events, nowIso);
+  } else {
+    return { error: 'rank requires payload.patterns or payload.events' };
   }
 
   let capacity = Math.max(patterns.length, 1);
