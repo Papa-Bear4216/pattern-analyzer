@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { isRankError, rankSuppliedCandidates } from './mishmash-rank';
+import { isRankError, rankSuppliedCandidates, computeSurprisalFeedback } from './mishmash-rank';
 
 const NODE = 'pattern-analyzer';
 
@@ -37,8 +37,17 @@ export function handlePatternDelegate(body: unknown): { status: number; body: Re
       body: envelope(record, { node: NODE, action: 'rank', ...ranked }),
     };
   }
-  return { status: 400, body: { error: 'pattern-analyzer accepts ping or rank' } };
+  if (record.action === 'feedback') {
+    const feedback = computeSurprisalFeedback(record.payload ?? {});
+    if ('error' in feedback) return { status: 400, body: { error: feedback.error } };
+    return {
+      status: 200,
+      body: envelope(record, { node: NODE, action: 'feedback', ...feedback }),
+    };
+  }
+  return { status: 400, body: { error: 'pattern-analyzer accepts ping, rank, or feedback' } };
 }
+
 
 function readBody(req: IncomingMessage, limit: number): Promise<string> {
   return new Promise((resolve, reject) => {

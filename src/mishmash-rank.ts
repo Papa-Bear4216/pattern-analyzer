@@ -148,3 +148,97 @@ export function rankSuppliedCandidates(payload: unknown, now: Date = new Date())
 export function isRankError(value: RankResult | { error: string }): value is { error: string } {
   return 'error' in value && !('order' in value);
 }
+
+export interface SurprisalFeedbackResult {
+  feedbackId: string;
+  candidateId: string;
+  outcome: string;
+  actionType: string;
+  surprisalScore: number;
+  surprisal: number;
+  weightMultiplier: number;
+  multiplier: number;
+  demoteRecommended: boolean;
+  timestamp: string;
+}
+
+export function computeSurprisalFeedback(payload: unknown): SurprisalFeedbackResult | { error: string } {
+  const record = asRecord(payload);
+  if (!record) return { error: 'feedback requires a payload object' };
+  const candidateId = typeof record.candidateId === 'string' && record.candidateId.trim()
+    ? record.candidateId.trim()
+    : '';
+  if (!candidateId) return { error: 'candidateId is required' };
+  if (candidateId.length > 128) return { error: 'candidateId must be at most 128 characters' };
+
+  const rawOutcome = typeof record.outcome === 'string' ? record.outcome.trim() : undefined;
+  const rawActionType = typeof record.actionType === 'string' ? record.actionType.trim() : undefined;
+
+  if (!rawOutcome && !rawActionType) {
+    return { error: 'outcome or actionType is required' };
+  }
+
+  const ALIAS: Record<string, string> = {
+    approve: 'approved',
+    reject: 'rejected',
+    undo: 'undone',
+    dismiss: 'dismissed',
+  };
+
+  const normOutcome = rawOutcome ? (ALIAS[rawOutcome.toLowerCase()] ?? rawOutcome.toLowerCase()) : undefined;
+  const normActionType = rawActionType ? (ALIAS[rawActionType.toLowerCase()] ?? rawActionType.toLowerCase()) : undefined;
+
+  if (normOutcome && normActionType && normOutcome !== normActionType) {
+    return { error: `conflicting outcome (${rawOutcome}) and actionType (${rawActionType})` };
+  }
+
+  const normalized = normOutcome ?? normActionType!;
+
+  let probability = 0.85;
+  let multiplier = 1.25;
+  let demote = false;
+
+  const userConf = typeof record.priorConfidence === 'number' && Number.isFinite(record.priorConfidence)
+    ? record.priorConfidence
+    : undefined;
+
+  if (normalized === 'approved') {
+    probability = userConf !== undefined && userConf > 0 && userConf < 1 ? userConf : 0.85;
+    multiplier = userConf !== undefined && Math.abs(userConf - 0.85) > 0.05
+      ? Math.min(3.0, Math.max(1.05, 1.0 + (1.0 - probability) * 0.5))
+      : 1.25;
+    demote = false;
+  } else if (normalized === 'dismissed') {
+    probability = userConf !== undefined && userConf > 0 && userConf < 1 ? userConf : 0.25;
+    multiplier = 0.70;
+    demote = false;
+  } else if (normalized === 'undone' || normalized === 'diverged' || normalized === 'rejected') {
+    probability = userConf !== undefined && userConf > 0 && userConf < 1 ? userConf : 0.05;
+    multiplier = 0.40;
+    demote = true;
+  } else {
+    return { error: `unrecognized outcome: ${normalized}` };
+  }
+
+  // S = -log2(P)
+  const surprisal = Math.round(-Math.log2(probability) * 100) / 100;
+  const clampedMultiplier = Math.round(Math.min(3.0, Math.max(0.1, multiplier)) * 100) / 100;
+
+  const feedbackId = typeof record.feedbackId === 'string' && record.feedbackId.trim()
+    ? record.feedbackId.trim()
+    : `fbk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  return {
+    feedbackId,
+    candidateId,
+    outcome: normalized,
+    actionType: normalized,
+    surprisalScore: surprisal,
+    surprisal,
+    weightMultiplier: clampedMultiplier,
+    multiplier: clampedMultiplier,
+    demoteRecommended: demote,
+    timestamp: new Date().toISOString(),
+  };
+}
+
